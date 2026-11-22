@@ -1,0 +1,1249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Katkafi Cat Café</title>
+<meta name="description" content="Concept demo: an explorable 3D cat café for Katkafi, with rescue, care, coffee and matchmaking.">
+<link rel="icon" href="katkafi-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1814;        /* midnight emerald */
+    --cream: #f2ead8;     /* ivory */
+    --tan: #c9a86a;       /* antique brass */
+    --blue: #1f4a3c;      /* bottle green */
+    --terra: #6e1f2b;     /* oxblood */
+    --ink: #141a17;
+    --panel: #f4eee2;
+    --line: #e2d8c4;
+    --muted: #6d675c;
+  }
+  /* The café is a moody evening scene, so dark mode keeps the same palette. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #0f1814; --cream: #f2ead8; --panel: #f4eee2; --ink: #141a17; }
+  }
+  :root[data-theme="dark"] { --bg: #0f1814; --cream: #f2ead8; --panel: #f4eee2; --ink: #141a17; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--cream); font-family: "DM Sans", system-ui, sans-serif; overflow: hidden; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; }
+
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  body.dragging #scene { cursor: grabbing; }
+
+  /* ---------- UI chrome ---------- */
+  .ui { transition: opacity .5s ease; }
+  body:not(.entered) .ui, body:not(.entered) #hotspots { opacity: 0; pointer-events: none; }
+  .top { position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; pointer-events: none; z-index: 3; }
+  .top > * { pointer-events: auto; }
+  .logo { display: flex; align-items: center; gap: 10px; font-family: Fraunces, serif; font-weight: 600; font-size: 26px; letter-spacing: -.01em; text-shadow: 0 2px 10px rgba(0,0,0,.35); }
+  .logo img { width: 46px; height: 42px; object-fit: contain; filter: drop-shadow(0 2px 6px rgba(0,0,0,.4)); }
+  .join { background: var(--blue); color: var(--cream); border: 1px solid var(--tan); border-radius: 999px; padding: 11px 20px; font-weight: 600; font-size: 14px; cursor: pointer; box-shadow: 0 3px 0 #0f2a21; transition: transform .15s, box-shadow .15s; }
+  .join:hover { transform: translateY(-1px); box-shadow: 0 4px 0 #0f2a21; }
+  .join:active { transform: translateY(2px); box-shadow: 0 1px 0 #0f2a21; }
+
+  .spots-nav, .hint { background: rgba(15,24,20,.62); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 14px; padding: 10px 14px; }
+  .spots-nav { position: fixed; left: 24px; bottom: 24px; display: flex; flex-direction: column; gap: 4px; z-index: 3; }
+  .spots-nav button { background: none; border: 0; color: var(--cream); font-size: 14px; text-align: left; opacity: .8; cursor: pointer; padding: 3px 0; transition: opacity .2s, transform .2s; }
+  .spots-nav button:hover, .spots-nav button:focus-visible { opacity: 1; transform: translateX(4px); }
+  .spots-nav button b { font-weight: 700; font-size: 11px; color: var(--tan); margin-right: 10px; }
+  .hint { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); margin: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .12em; text-align: center; line-height: 1.8; pointer-events: none; z-index: 3; }
+  body.focused .spots-nav, body.focused .hint, body.focused #hotspots { opacity: 0; pointer-events: none; }
+
+  /* ---------- Hotspots ---------- */
+  #hotspots { position: fixed; inset: 0; pointer-events: none; transition: opacity .4s; z-index: 2; }
+  .hotspot { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; cursor: pointer; color: var(--cream); pointer-events: auto; will-change: transform; }
+  .hotspot[hidden] { display: none; }
+  .dot { width: 18px; height: 18px; border-radius: 50%; background: var(--blue); border: 3px solid var(--tan); position: relative; flex: none; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+  .dot::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--tan); animation: pulse 2s ease-out infinite; }
+  .label { font-size: 12px; font-weight: 600; background: rgba(15,24,20,.85); padding: 6px 10px; border-radius: 999px; white-space: nowrap; opacity: 0; transform: translateX(-6px); transition: opacity .2s, transform .2s; }
+  .hotspot:hover .label, .hotspot:focus-visible .label { opacity: 1; transform: none; }
+  @media (hover: none) { .label { opacity: 1; transform: none; } }
+
+  /* ---------- Speech bubbles ---------- */
+  #bubbles { position: fixed; inset: 0; pointer-events: none; z-index: 1; transition: opacity .4s; }
+  body:not(.entered) #bubbles { opacity: 0; }
+  .bubble { position: absolute; left: 0; top: 0; background: var(--cream); color: var(--ink); font-size: 12px; font-weight: 600; padding: 7px 11px; border-radius: 12px; white-space: nowrap; opacity: 0; transition: opacity .3s; box-shadow: 0 4px 14px rgba(0,0,0,.25); margin-top: -8px; }
+  .bubble::after { content: ""; position: absolute; left: 50%; bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-top-color: var(--cream); border-bottom: 0; }
+  .bubble.show { opacity: 1; }
+  .bubble.cat { background: var(--tan); }
+  .bubble.cat::after { border-top-color: var(--tan); }
+
+  /* ---------- Panel ---------- */
+  #panel { position: fixed; top: 12px; right: 12px; bottom: 12px; width: min(430px, calc(100% - 24px)); background: var(--panel); color: var(--ink); border-radius: 22px; padding: 22px 28px 28px; overflow-y: auto; transform: translateX(calc(100% + 24px)); transition: transform .6s cubic-bezier(.2,.8,.2,1); box-shadow: 0 24px 70px rgba(0,0,0,.45); z-index: 4; }
+  #panel.open { transform: none; }
+  .back { background: var(--ink); color: var(--cream); border: 0; border-radius: 999px; padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .back:hover { background: var(--blue); }
+  .kicker { font-size: 12px; font-weight: 700; color: #8a6d36; letter-spacing: .12em; text-transform: uppercase; margin: 28px 0 10px; }
+  #panel h2 { font-family: Fraunces, serif; font-weight: 600; font-size: 38px; line-height: 1.05; margin: 0 0 14px; letter-spacing: -.015em; }
+  #panel h2 em { color: var(--terra); font-weight: 500; }
+  #panel p.body { line-height: 1.6; color: #3d3a33; font-size: 15px; margin: 0; }
+  #panel ul { list-style: none; padding: 0; margin: 22px 0 24px; border-top: 1px solid var(--line); }
+  #panel li { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  #panel li span:first-child { font-weight: 600; }
+  #panel li span:last-child { color: var(--muted); text-align: right; }
+  .cta { display: inline-block; background: var(--blue); color: #fff; text-decoration: none; font-weight: 600; font-size: 14px; padding: 12px 20px; border-radius: 999px; box-shadow: 0 3px 0 #0f2a21; }
+  .cta:hover { filter: brightness(1.06); }
+  .note { font-size: 12px; color: var(--muted); margin: 14px 0 0; }
+
+  /* ---------- Gate ---------- */
+  #gate { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 16px; background: rgba(15,24,20,.92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: opacity 1s ease, visibility 1s; }
+  body.entered #gate { opacity: 0; visibility: hidden; }
+  .mascot { width: 170px; height: 154px; object-fit: contain; filter: drop-shadow(0 0 28px rgba(217,123,196,.35)); margin-bottom: 22px; animation: peek 3.2s ease-in-out infinite; }
+  .welcome { font-family: Fraunces, serif; font-style: italic; font-size: clamp(24px, 4vw, 34px); margin: 0; opacity: .85; }
+  #gate h1 { font-family: Fraunces, serif; font-weight: 700; font-size: clamp(64px, 12vw, 128px); line-height: .95; margin: 2px 0 12px; letter-spacing: -.03em; }
+  .tagline { margin: 0; max-width: 420px; font-size: 16px; line-height: 1.5; color: var(--tan); }
+  .loader { margin-top: 28px; height: 56px; }
+  .bar { width: 180px; height: 6px; background: rgba(246,236,220,.18); border-radius: 3px; overflow: hidden; margin: 0 auto 12px; }
+  .bar span { display: block; height: 100%; width: 0; background: var(--tan); transition: width .15s linear; }
+  .loader p { font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; margin: 0; }
+  .enter { font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; background: var(--cream); color: var(--ink); border: 0; border-radius: 999px; padding: 14px 28px; cursor: pointer; margin-top: 28px; box-shadow: 0 4px 0 var(--tan); transition: transform .15s; }
+  .enter:hover, .enter:focus-visible { transform: translateY(-2px); }
+  .enter[hidden], .loader[hidden] { display: none; }
+
+  .demo-note { position: fixed; right: 16px; bottom: 12px; margin: 0; font-size: 11px; opacity: .55; z-index: 11; pointer-events: none; }
+  body.focused .demo-note { opacity: 0; }
+
+  /* ---------- Teaser lightbox ---------- */
+  #teaser { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8,12,10,.88); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); opacity: 0; visibility: hidden; transition: opacity .45s ease, visibility .45s; }
+  #teaser.open { opacity: 1; visibility: visible; }
+  .tz-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px; transform: scale(.96); transition: transform .5s cubic-bezier(.2,.8,.2,1); }
+  #teaser.open .tz-card { transform: none; }
+  #teaser video { display: block; height: min(80vh, 760px); max-width: calc(100vw - 32px); aspect-ratio: 9 / 16; object-fit: cover; background: #000; border: 1px solid var(--tan); border-radius: 14px; box-shadow: 0 30px 90px rgba(0,0,0,.6); }
+  .tz-title { margin: 0; font-family: Fraunces, serif; font-style: italic; font-size: 20px; color: var(--cream); }
+  .tz-title b { font-style: normal; font-family: "DM Sans", sans-serif; font-size: 11px; letter-spacing: .2em; color: var(--tan); margin-right: 10px; vertical-align: 3px; }
+  .tz-close { position: absolute; top: -6px; right: -54px; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--tan); background: rgba(15,24,20,.7); color: var(--cream); font-size: 20px; line-height: 1; cursor: pointer; }
+  .tz-close:hover, .tz-close:focus-visible { background: var(--blue); }
+  @media (max-width: 820px) { .tz-close { right: 6px; top: 6px; z-index: 1; } #teaser video { height: min(74vh, 720px); } }
+  .hotspot.teaser-spot .dot { background: var(--terra); }
+
+  /* ---------- Katkafi radio ---------- */
+  .radio { position: fixed; right: 16px; bottom: 34px; z-index: 3; width: 272px; padding: 10px; border-radius: 16px; background: rgba(15,24,20,.8); border: 1px solid rgba(201,168,106,.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+  .radio .now { display: flex; align-items: center; gap: 10px; }
+  .yt-wrap { flex: none; width: 96px; height: 54px; border-radius: 8px; overflow: hidden; background: #000; border: 1px solid rgba(201,168,106,.35); }
+  .yt-wrap iframe { width: 96px; height: 54px; display: block; border: 0; }
+  .radio .meta { flex: 1; min-width: 0; }
+  .radio .meta small { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .18em; color: var(--tan); }
+  .radio .meta span { display: block; font-family: Fraunces, serif; font-style: italic; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .radio .meta em { display: block; font-style: normal; font-size: 11px; opacity: .7; margin-top: 1px; }
+  .rbtn { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--tan); background: var(--blue); color: var(--cream); display: grid; place-items: center; cursor: pointer; padding: 0; }
+  .rbtn:hover, .rbtn:focus-visible { background: #2a5f4e; }
+  .rbtn svg { width: 14px; height: 14px; fill: currentColor; }
+  .rbtn .pause, .rbtn.on .play { display: none; }
+  .rbtn.on .pause { display: block; }
+  .rbtn.small { width: 26px; height: 26px; background: none; border-color: rgba(201,168,106,.5); }
+  .rbtn.small svg { width: 12px; height: 12px; }
+  .rbtn.small.on { background: var(--blue); }
+  .radio .row { display: flex; align-items: center; gap: 10px; margin-top: 9px; font-size: 11px; font-weight: 600; letter-spacing: .04em; }
+  .radio .row label { width: 92px; flex: none; opacity: .85; }
+  .radio input[type=range] { flex: 1; min-width: 0; accent-color: var(--tan); height: 4px; }
+  .radio .fold { position: absolute; top: -10px; right: 12px; width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(201,168,106,.5); background: var(--bg); color: var(--tan); font-size: 12px; line-height: 1; cursor: pointer; padding: 0; }
+  .radio.min .row { display: none; }
+  .radio.min .fold { transform: rotate(180deg); }
+  body.focused .radio { opacity: 0; pointer-events: none; }
+  @media (max-width: 820px) { .radio { right: 12px; bottom: 74px; width: 250px; } }
+
+  @keyframes pulse { 0% { transform: scale(.8); opacity: .9; } 100% { transform: scale(1.9); opacity: 0; } }
+  @keyframes peek { 0%, 100% { transform: rotate(-3deg) translateY(0); } 50% { transform: rotate(3deg) translateY(-6px); } }
+
+  @media (max-width: 820px) {
+    .top { padding: 12px 16px; }
+    .logo { font-size: 21px; }
+    .logo img { width: 38px; height: 34px; }
+    .join { padding: 9px 14px; font-size: 13px; }
+    .spots-nav { display: none; }
+    .hint { bottom: 18px; width: calc(100% - 32px); }
+    #panel { top: auto; left: 12px; right: 12px; width: auto; max-height: 62vh; transform: translateY(calc(100% + 24px)); padding: 18px 20px 24px; }
+    #panel h2 { font-size: 31px; }
+    .kicker { margin-top: 20px; }
+    .demo-note { display: none; }
+    .mascot { width: 136px; height: 124px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
+  }
+</style>
+<script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+  <canvas id="scene" aria-label="Explorable 3D cat café"></canvas>
+  <div id="bubbles"></div>
+  <div id="hotspots"></div>
+
+  <header class="top ui">
+    <div class="logo"><img src="katkafi-logo.png" alt="">katkafi</div>
+    <button class="join" data-open="adopt">Adopt a cat</button>
+  </header>
+
+  <nav class="spots-nav ui" aria-label="Explore the café"></nav>
+  <p class="hint ui">Drag or pinch to look · Tap a cat to say hi<br>Tap hotspots to explore</p>
+
+  <aside id="panel" aria-hidden="true" aria-live="polite">
+    <button class="back">← Back to the café</button>
+    <div class="panel-body"></div>
+  </aside>
+
+  <section id="gate">
+    <img class="mascot" src="katkafi-logo.png" alt="Katkafi logo: a smiling halftone cat">
+    <p class="welcome">Welcome to</p>
+    <h1>katkafi</h1>
+    <p class="tagline">Rescue, care, coffee and matchmaking for cats, all under one roof in Tunis.</p>
+    <div class="loader">
+      <div class="bar"><span></span></div>
+      <p>Waking the cats <b class="pct">0</b>%</p>
+    </div>
+    <button class="enter" hidden>Click to enter</button>
+  </section>
+
+  <section class="radio ui" aria-label="Katkafi radio">
+    <button class="fold" aria-label="Show or hide the radio controls">▾</button>
+    <div class="now">
+      <div class="yt-wrap"><div id="yt-player"></div></div>
+      <div class="meta"><small>KATKAFI RADIO</small><span>Cool Cat</span><em>Queen</em></div>
+      <button class="rbtn music-btn" aria-label="Play the radio">
+        <svg class="play" viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z"/></svg>
+        <svg class="pause" viewBox="0 0 16 16"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></svg>
+      </button>
+    </div>
+    <div class="row"><label for="music-vol">Music</label><input id="music-vol" type="range" min="0" max="100" value="45"></div>
+    <div class="row">
+      <label for="amb-vol">Street &amp; cats</label><input id="amb-vol" type="range" min="0" max="100" value="60">
+      <button class="rbtn small amb-btn on" aria-label="Turn off the street and cat sounds">
+        <svg class="play" viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z"/></svg>
+        <svg class="pause" viewBox="0 0 16 16"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></svg>
+      </button>
+    </div>
+  </section>
+
+  <div id="teaser" role="dialog" aria-modal="true" aria-label="Katkafi teaser video" aria-hidden="true">
+    <div class="tz-card">
+      <video controls playsinline preload="none" poster="katkafi-teaser-poster.jpg" src="katkafi-teaser.mp4"></video>
+      <p class="tz-title"><b>NOW SHOWING</b>A stray finds its place</p>
+      <button class="tz-close" aria-label="Close the video">×</button>
+    </div>
+  </div>
+
+  <p class="demo-note">Concept demo · sample content</p>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* ================= Content ================= */
+const SPOTS = [
+  { id: 'table', label: 'Café table', pos: [0, 1.05, -1], zoom: .45, fov: 46,
+    kicker: '01 · Katkafi at a glance', title: 'Rescue, care, coffee and <em>matchmaking.</em>',
+    body: 'A cat sanctuary, care center and coffee shop in Greater Tunis. Every coffee, grooming and playdate gives a street cat a second chance.',
+    points: [['The heart', 'Rescue & adoption'], ['The service', 'Care'], ['The experience', 'Coffee'], ['The community', 'Match']],
+    cta: ['Our story', '#'] },
+  { id: 'bar', label: 'Coffee bar', pos: [2.1, 1.85, -4.4], dot: [2.1, 1.5, -4.4], zoom: .45, fov: 50,
+    kicker: '02 · Kitty café', title: 'Coffee, pastries and <em>purrs.</em>',
+    body: 'Drinks and snacks in a room shared with adoptable cats you can play with. Joy without commitment, any day of the week.',
+    points: [['Espresso', '3.5 TND'], ['Cappuccino', '5 TND'], ['Latte', '5.5 TND'], ['Croissant', '3 TND'], ['Play session', '10 TND']],
+    cta: ['Book a play session', '#'], note: 'Sample menu: prices are placeholders.' },
+  { id: 'adopt', label: 'Adoption board', pos: [-4.85, 1.9, -2], zoom: .45, fov: 42,
+    kicker: '03 · Rescue & adoption', title: 'Meet a cat you <em>already know.</em>',
+    body: 'Street cats are vaccinated, neutered and socialized, then matched with vetted adopters. Meet, play and bond in the café before you adopt.',
+    points: [['01 Rescue', 'Take in & treat'], ['02 Care', 'Vaccinate & neuter'], ['03 Socialize', 'Play in the café'], ['04 Home', 'Adopt with follow-up']],
+    cta: ['See who is waiting', '#'] },
+  { id: 'groom', label: 'Grooming', pos: [4.85, 1.7, -1.6], zoom: .45, fov: 44,
+    kicker: '04 · Care services', title: 'One <em>trusted address</em> for your cat.',
+    body: "Pet-sitting, grooming and health care, delivered with partner veterinarians, so your cat's routine and health live in one place.",
+    points: [['Grooming', 'Bath, brush, nails'], ['Pet-sitting', 'While you are away'], ['Health care', 'Partner vets'], ['Follow-up', 'One health record']],
+    cta: ['Book care', '#'] },
+  { id: 'tree', label: 'Cat tree', pos: [-4.15, 1.3, .9], dot: [-4.15, 2.5, .9], zoom: .15, fov: 44,
+    kicker: '05 · Cat matchmaking', title: 'New best friends, <em>safely introduced.</em>',
+    body: 'Friend-finding for social cats, and supervised introductions for responsible breeding. No more risky social-media posts.',
+    points: [['Playdates', 'For social cats'], ['Introductions', 'Supervised'], ['Breeding', 'Responsible only'], ['Pays through', 'Matching fee']],
+    cta: ['Find a friend', '#'] },
+  { id: 'booth', label: 'Visit & support', pos: [3.8, 1.3, 1.5], dot: [3.8, 2.3, 1.5], zoom: .4, fov: 52,
+    kicker: '06 · Visit & support', title: 'Every visit helps a <em>street cat.</em>',
+    body: 'Come for a coffee, sponsor a cat or give to the Rescue Fund. A fixed share of profit treats new strays, and we publish a public impact report.',
+    points: [['Where', 'Greater Tunis'], ['Sponsor', 'A cat or the Rescue Fund'], ['Contact', 'hello@katkafi.tn']],
+    cta: ['Sponsor a cat', '#'], note: 'Contact details are placeholders.' },
+];
+
+/* ================= Setup ================= */
+const $ = s => document.querySelector(s);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const canvas = $('#scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#0f1814');
+const camera = new THREE.PerspectiveCamera(72, 1, 0.05, 60);
+camera.rotation.order = 'YXZ';
+
+// royal palette: midnight emerald, oxblood, antique brass and ivory
+const C = { espresso: '#1a1817', cream: '#f2ead8', tan: '#c9a86a', blue: '#1f4a3c', terra: '#6e1f2b',
+  wall: '#e8dfcd', backWall: '#5e1d2a', wood: '#6e4a33', woodDark: '#2e211b', leaf: '#4f8a5a', leaf2: '#2f6544', steel: '#c9ccd1',
+  brass: '#b8955a' };
+const brassMat = (o = {}) => new THREE.MeshStandardMaterial({ color: '#c9a35e', metalness: .85, roughness: .32, ...o });
+
+const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: .78, metalness: 0, ...o });
+function add(geo, m, x, y, z, parent = scene) {
+  const mesh = new THREE.Mesh(geo, typeof m === 'string' ? mat(m) : m);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+const box = (w, h, d, m, x, y, z, p) => add(new THREE.BoxGeometry(w, h, d), m, x, y, z, p);
+const cyl = (rt, rb, h, m, x, y, z, p, seg = 24) => add(new THREE.CylinderGeometry(rt, rb, h, seg), m, x, y, z, p);
+const sphere = (r, m, x, y, z, p) => add(new THREE.SphereGeometry(r, 20, 14), m, x, y, z, p);
+function canvasTex(w, h, draw) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'); draw(g, w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+// a simple flat cat face, used on posters and the adoption board
+function drawCatFace(g, cx, cy, r, fur, eye = '#2a1a14', patch = null) {
+  g.fillStyle = fur;
+  g.beginPath(); g.moveTo(cx - r * .95, cy - r * .2); g.lineTo(cx - r * .75, cy - r * 1.15); g.lineTo(cx - r * .2, cy - r * .75); g.fill();
+  g.beginPath(); g.moveTo(cx + r * .95, cy - r * .2); g.lineTo(cx + r * .75, cy - r * 1.15); g.lineTo(cx + r * .2, cy - r * .75); g.fill();
+  g.beginPath(); g.ellipse(cx, cy, r, r * .85, 0, 0, Math.PI * 2); g.fill();
+  if (patch) { g.fillStyle = patch; g.beginPath(); g.ellipse(cx + r * .45, cy - r * .35, r * .45, r * .38, .4, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = eye;
+  g.beginPath(); g.ellipse(cx - r * .38, cy - r * .05, r * .1, r * .16, 0, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(cx + r * .38, cy - r * .05, r * .1, r * .16, 0, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#d98c8c'; g.beginPath(); g.moveTo(cx - r * .1, cy + r * .2); g.lineTo(cx + r * .1, cy + r * .2); g.lineTo(cx, cy + r * .32); g.fill();
+}
+
+/* ================= Loader ================= */
+const pctEl = $('.pct'), barEl = $('.bar span');
+let progress = 0;
+const setProgress = p => { progress = Math.max(progress, p); pctEl.textContent = Math.round(progress); barEl.style.width = progress + '%'; };
+const fakeLoad = setInterval(() => setProgress(Math.min(progress + Math.random() * 9, 88)), 90);
+try {
+  await Promise.race([
+    Promise.all([document.fonts.load('600 40px Fraunces'), document.fonts.load('italic 40px Fraunces'), document.fonts.load('600 20px "DM Sans"')]),
+    new Promise(r => setTimeout(r, 2500)),
+  ]);
+} catch (e) { /* fonts are optional */ }
+const manager = new THREE.LoadingManager();
+const texLoader = new THREE.TextureLoader(manager);
+
+/* ================= Room ================= */
+const floorTex = canvasTex(512, 512, (g, w, h) => {
+  const n = 4, s = w / n; // marble checkerboard: ivory and emerald-black
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const dark = (r + c) % 2;
+    g.fillStyle = dark ? '#231c1a' : '#e8e1d2'; g.fillRect(c * s, r * s, s, s);
+    g.strokeStyle = dark ? 'rgba(201,168,106,.12)' : 'rgba(80,90,80,.14)'; g.lineWidth = 1.2;
+    for (let k = 0; k < 3; k++) { // soft veins
+      g.beginPath(); let x = c * s + Math.random() * s, y = r * s;
+      g.moveTo(x, y); while (y < (r + 1) * s) { x += (Math.random() - .5) * 18; y += 10; g.lineTo(x, y); } g.stroke();
+    }
+  }
+  g.strokeStyle = 'rgba(184,149,90,.5)'; g.lineWidth = 2; // thin brass inlay between the tiles
+  for (let i = 0; i <= n; i++) { g.beginPath(); g.moveTo(i * s, 0); g.lineTo(i * s, h); g.moveTo(0, i * s); g.lineTo(w, i * s); g.stroke(); }
+});
+floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping; floorTex.repeat.set(2.5, 2.5); floorTex.anisotropy = 8;
+box(10, .1, 10, mat('#ffffff', { map: floorTex }), 0, -.05, 0);
+
+const sideWall = mat(C.wall);
+box(10, 4, .1, mat(C.backWall), 0, 2, -5.05);
+box(.1, 4, 10, sideWall, -5.05, 2, 0);
+box(.1, 4, 10, sideWall, 5.05, 2, 0);
+box(10, 4, .1, sideWall, 0, 2, 5.05);
+box(10, .1, 10, mat('#efe8da'), 0, 4.05, 0);
+// wooden wainscot + cream rail
+const wain = mat(C.woodDark);
+box(10, 1.05, .04, wain, 0, .525, -4.98); box(.04, 1.05, 10, wain, -4.98, .525, 0); box(.04, 1.05, 10, wain, 4.98, .525, 0); box(10, 1.05, .04, wain, 0, .525, 4.98);
+const rail = brassMat();
+box(10, .05, .07, rail, 0, 1.07, -4.96); box(.07, .05, 10, rail, -4.96, 1.07, 0); box(.07, .05, 10, rail, 4.96, 1.07, 0);
+
+// window with sill
+const winGlow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.6), new THREE.MeshBasicMaterial({ color: '#fff0c9', toneMapped: false }));
+winGlow.position.set(-1.6, 2.3, -4.99); scene.add(winGlow);
+const frame = mat(C.cream);
+box(2.4, .1, .08, frame, -1.6, 3.15, -4.96); box(2.4, .1, .08, frame, -1.6, 1.45, -4.96);
+box(.1, 1.8, .08, frame, -2.75, 2.3, -4.96); box(.1, 1.8, .08, frame, -.45, 2.3, -4.96);
+box(.05, 1.6, .06, frame, -1.6, 2.3, -4.96); box(2.2, .05, .06, frame, -1.6, 2.3, -4.96);
+box(2.6, .07, .3, frame, -1.6, 1.42, -4.85);
+
+// rug
+add(new THREE.CylinderGeometry(1.9, 1.9, .02, 64), C.terra, 0, .01, -1);
+add(new THREE.CylinderGeometry(1.65, 1.65, .022, 64), C.brass, 0, .012, -1);
+add(new THREE.CylinderGeometry(1.4, 1.4, .024, 64), C.cream, 0, .014, -1);
+
+/* ---------- Café table ---------- */
+const table = new THREE.Group(); table.position.set(0, 0, -1); scene.add(table);
+box(2.4, .08, 1.2, C.wood, 0, .76, 0, table);
+for (const [x, z] of [[-1.1, -.5], [1.1, -.5], [-1.1, .5], [1.1, .5]]) box(.07, .72, .07, C.woodDark, x, .36, z, table);
+function cup(x, y, z, color, p) {
+  cyl(.075, .075, .012, C.cream, x, y + .006, z, p);
+  cyl(.045, .036, .07, color, x, y + .047, z, p);
+  cyl(.04, .04, .004, '#5a3524', x, y + .08, z, p); // coffee surface
+}
+cup(-.6, .8, .25, C.cream, table); cup(.3, .8, .35, C.blue, table); cup(-.95, .8, -.3, C.terra, table);
+cyl(.15, .15, .012, C.cream, .25, .806, -.28, table);
+for (const dx of [-.06, .06]) { const cr = add(new THREE.TorusGeometry(.045, .022, 8, 16, Math.PI), '#d69a4e', .25 + dx, .83, -.28, table); cr.rotation.x = -Math.PI / 2; }
+cyl(.04, .05, .14, C.cream, -.2, .87, -.35, table); sphere(.05, C.terra, -.2, .97, -.35, table);
+for (const [x, z] of [[-.7, .95], [.6, .95], [0, -1.05]]) {
+  cyl(.22, .22, .06, C.blue, x, .5, z, table);
+  cyl(.03, .03, .48, C.espresso, x, .25, z, table, 8);
+  add(new THREE.TorusGeometry(.16, .015, 6, 24), C.espresso, x, .2, z, table).rotation.x = Math.PI / 2;
+}
+cyl(.008, .008, 1.4, C.espresso, 0, 3.35, -1, scene, 6);
+add(new THREE.ConeGeometry(.36, .32, 32, 1, true), brassMat({ side: THREE.DoubleSide }), 0, 2.5, -1).castShadow = false;
+add(new THREE.SphereGeometry(.07, 12, 8), new THREE.MeshBasicMaterial({ color: '#fff3d0', toneMapped: false }), 0, 2.38, -1).castShadow = false;
+
+/* ---------- Small bistro table ---------- */
+const bistro = new THREE.Group(); bistro.position.set(2.5, 0, -1.2); scene.add(bistro);
+cyl(.4, .4, .04, C.cream, 0, .74, 0, bistro); cyl(.03, .03, .72, C.espresso, 0, .37, 0, bistro, 8); cyl(.22, .24, .03, C.espresso, 0, .015, 0, bistro);
+cup(-.12, .76, .08, C.terra, bistro); cup(.15, .76, -.1, C.cream, bistro);
+for (const [x, z, ry] of [[-.6, .25, 1.9], [.55, .35, -2.2]]) {
+  const ch = new THREE.Group(); ch.position.set(x, 0, z); ch.rotation.y = ry; bistro.add(ch);
+  cyl(.2, .2, .04, C.terra, 0, .46, 0, ch);
+  for (const [lx, lz] of [[-.13, -.13], [.13, -.13], [-.13, .13], [.13, .13]]) cyl(.012, .012, .46, C.espresso, lx, .23, lz, ch, 6);
+  const back = add(new THREE.TorusGeometry(.17, .015, 6, 20, Math.PI), C.espresso, 0, .62, -.18, ch); back.rotation.x = 0;
+  cyl(.012, .012, .16, C.espresso, -.17, .54, -.18, ch, 6); cyl(.012, .012, .16, C.espresso, .17, .54, -.18, ch, 6);
+}
+
+/* ---------- Swing ---------- */
+const swing = new THREE.Group(); swing.position.set(-3, 4, 2.2); scene.add(swing);
+for (const x of [-.38, .38]) cyl(.014, .014, 3.35, C.cream, x, -1.675, 0, swing, 6);
+box(.9, .06, .36, C.terra, 0, -3.36, 0, swing);
+box(.2, .05, .12, C.espresso, 0, 0, 0).position.set(-3.38, 3.98, 2.2);
+box(.2, .05, .12, C.espresso, 0, 0, 0).position.set(-2.62, 3.98, 2.2);
+
+/* ---------- Adoption board ---------- */
+const ADOPTABLE = [['Mimi', '#d98a3d', null], ['Zitouna', '#8d8f94', null], ['Bsissa', '#efdcbc', '#d98a3d'], ['Harissa', '#c4742b', '#2b2524'], ['Loulou', '#2b2524', null], ['Fennec', '#fbf6ee', '#d9b48f']];
+const boardTex = canvasTex(640, 380, (g, w, h) => {
+  g.fillStyle = '#e6ddcb'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 1400; i++) { g.fillStyle = `rgba(60,60,45,${Math.random() * .18})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+  g.fillStyle = C.espresso; g.font = 'italic 600 46px Fraunces, Georgia, serif'; g.fillText('Adopt me!', 30, 56);
+  g.font = '600 18px "DM Sans", sans-serif'; g.fillStyle = '#6d675c'; g.fillText('Vaccinated · neutered · socialized', 270, 50);
+  ADOPTABLE.forEach(([name, fur, patch], i) => {
+    const col = i % 3, row = Math.floor(i / 3);
+    const x = 40 + col * 200, y = 80 + row * 148;
+    g.save(); g.translate(x + 75, y + 65); g.rotate((i % 2 ? 1 : -1) * .04 * (1 + col * .5));
+    g.fillStyle = '#fffdf8'; g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 6; g.fillRect(-75, -65, 150, 132); g.shadowBlur = 0;
+    g.fillStyle = i % 2 ? '#dbe5df' : '#efe4d6'; g.fillRect(-65, -57, 130, 88);
+    drawCatFace(g, 0, -10, 28, fur, fur === '#2b2524' ? '#e8b44a' : '#2a1a14', patch);
+    g.fillStyle = C.espresso; g.font = '600 20px "DM Sans", sans-serif'; g.textAlign = 'center'; g.fillText(name, 0, 55);
+    g.fillStyle = C.terra; g.beginPath(); g.arc(0, -62, 7, 0, Math.PI * 2); g.fill();
+    g.restore();
+  });
+});
+const wb = new THREE.Group(); wb.position.set(-4.95, 1.9, -2); wb.rotation.y = Math.PI / 2; scene.add(wb);
+box(2.4, 1.45, .05, C.woodDark, 0, 0, 0, wb);
+const wbFace = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 1.36), mat('#ffffff', { map: boardTex, roughness: .9 }));
+wbFace.position.z = .027; wb.add(wbFace);
+
+/* ---------- Grooming station ---------- */
+const pegTex = canvasTex(512, 384, (g, w, h) => {
+  g.fillStyle = '#e3dccd'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#a89a80';
+  for (let x = 16; x < w; x += 32) for (let y = 16; y < h; y += 32) { g.beginPath(); g.arc(x, y, 4, 0, Math.PI * 2); g.fill(); }
+});
+const peg = new THREE.Group(); peg.position.set(4.95, 1.95, -1.5); peg.rotation.y = -Math.PI / 2; scene.add(peg);
+box(2.1, 1.3, .04, mat('#ffffff', { map: pegTex }), 0, 0, 0, peg);
+const signTex = (text, bg, fg, w = 512, h = 112, font = '600 64px Fraunces, serif') => canvasTex(w, h, (g, W, H) => {
+  g.fillStyle = bg; g.fillRect(0, 0, W, H); g.fillStyle = fg; g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, W / 2, H / 2 + 3);
+});
+const groomSign = new THREE.Mesh(new THREE.PlaneGeometry(1.2, .26), new THREE.MeshBasicMaterial({ map: signTex('Grooming', C.blue, C.cream) }));
+groomSign.position.set(0, .85, .03); peg.add(groomSign);
+// brushes, comb, scissors, spray bottle, towels
+[[-.75, C.terra], [-.5, C.blue]].forEach(([x, col]) => { box(.04, .22, .025, C.wood, x, .05, .05, peg); box(.13, .08, .05, col, x, .2, .05, peg); });
+box(.22, .035, .012, C.steel, -.15, .25, .05, peg);
+for (const dx of [-.04, .04]) add(new THREE.TorusGeometry(.03, .008, 6, 14), C.terra, .1 + dx, -.02, .05, peg);
+box(.015, .2, .01, C.steel, .1, .12, .05, peg).rotation.z = .15;
+cyl(.04, .04, .16, C.blue, .45, .05, .07, peg); box(.05, .06, .05, C.cream, .45, .16, .07, peg);
+box(1.6, .04, .22, C.woodDark, 0, -.45, .12, peg);
+[[-.55, C.cream], [-.3, C.tan], [-.05, C.blue]].forEach(([x, col], i) => box(.22, .07, .16, col, x, -.39 + i * 0, .12, peg));
+box(.22, .07, .16, C.terra, -.42, -.32, .12, peg);
+// grooming table with arm
+const gt = new THREE.Group(); gt.position.set(4.35, 0, -2.1); scene.add(gt);
+box(.9, .05, .55, '#e9e2d6', 0, .85, 0, gt); box(.82, .02, .47, C.blue, 0, .885, 0, gt);
+for (const [x, z] of [[-.4, -.22], [.4, -.22], [-.4, .22], [.4, .22]]) cyl(.018, .018, .84, C.steel, x, .42, z, gt, 8);
+cyl(.015, .015, .9, C.steel, .38, 1.33, -.2, gt, 8); box(.4, .025, .025, C.steel, .18, 1.77, -.2, gt);
+
+/* ---------- Coffee bar ---------- */
+const bar = new THREE.Group(); bar.position.set(2.1, 0, -4.4); scene.add(bar);
+box(3.0, 1.0, .7, C.wood, 0, .5, 0, bar);
+for (let x = -1.4; x <= 1.41; x += .2) box(.08, .86, .02, C.woodDark, x, .5, .36, bar);
+box(3.12, .06, .8, C.espresso, 0, 1.03, .02, bar);
+box(3.0, .08, .66, C.espresso, 0, .04, 0, bar);
+// espresso machine
+box(.64, .42, .42, mat(C.steel, { metalness: .6, roughness: .3 }), .5, 1.27, -.05, bar);
+box(.64, .1, .02, brassMat(), .5, 1.42, .17, bar);
+for (const dx of [-.15, .15]) cyl(.035, .035, .08, C.espresso, .5 + dx, 1.12, .16, bar, 12);
+box(.5, .03, .2, C.espresso, .5, 1.075, .2, bar);
+for (const dx of [-.18, -.06, .06, .18]) cyl(.035, .03, .06, C.cream, .5 + dx, 1.51, -.05, bar, 12);
+// grinder
+cyl(.08, .1, .28, C.espresso, 1.05, 1.2, -.05, bar); add(new THREE.ConeGeometry(.09, .16, 16), mat('#6b4430', { transparent: true, opacity: .8 }), 1.05, 1.42, -.05, bar).rotation.x = Math.PI;
+// pastry case
+box(.84, .04, .52, C.espresso, -.75, 1.08, 0, bar);
+const glassMat = new THREE.MeshStandardMaterial({ color: '#e6f2f0', transparent: true, opacity: .2, roughness: .05 });
+const pc = box(.84, .38, .52, glassMat, -.75, 1.29, 0, bar); pc.castShadow = false;
+for (let i = 0; i < 3; i++) { const cr = add(new THREE.TorusGeometry(.05, .025, 8, 16, Math.PI), '#d69a4e', -1.0 + i * .2, 1.13, .1, bar); cr.rotation.x = -Math.PI / 2; }
+for (let i = 0; i < 3; i++) { cyl(.04, .032, .05, C.terra, -1.0 + i * .2, 1.125, -.1, bar, 12); sphere(.038, C.cream, -1.0 + i * .2, 1.17, -.1, bar); }
+// register, tip jar, cup stack
+box(.26, .16, .22, C.espresso, -1.35, 1.14, -.05, bar);
+const jar = cyl(.06, .06, .14, glassMat, 1.35, 1.13, .15, bar); jar.castShadow = false;
+for (let i = 0; i < 4; i++) cyl(.04, .032, .05, C.cream, 1.35, 1.09 + i * .035, -.15, bar, 12);
+// menu board
+const menuTex = canvasTex(640, 384, (g, w, h) => {
+  g.fillStyle = '#1d1816'; g.fillRect(0, 0, w, h);
+  g.strokeStyle = C.tan; g.lineWidth = 3; g.strokeRect(14, 14, w - 28, h - 28);
+  g.fillStyle = C.cream; g.font = 'italic 600 52px Fraunces, serif'; g.textAlign = 'center'; g.fillText('Menu', w / 2, 74);
+  g.textAlign = 'left'; g.font = '500 24px "DM Sans", sans-serif';
+  [['Espresso', '3.5'], ['Cappuccino', '5'], ['Latte', '5.5'], ['Matcha latte', '7'], ['Croissant', '3']].forEach(([n, p], i) => {
+    const y = 128 + i * 40; g.fillStyle = C.cream; g.fillText(n, 50, y);
+    g.fillStyle = 'rgba(246,236,220,.35)'; for (let x = 60 + g.measureText(n).width; x < w - 150; x += 10) g.fillRect(x, y - 6, 3, 3);
+    g.fillStyle = C.tan; g.textAlign = 'right'; g.fillText(p + ' TND', w - 50, y); g.textAlign = 'left';
+  });
+  g.fillStyle = C.terra; g.fillRect(40, h - 72, w - 80, 40); g.strokeStyle = C.tan; g.lineWidth = 2; g.strokeRect(40, h - 72, w - 80, 40);
+  g.fillStyle = C.cream; g.font = '700 20px "DM Sans", sans-serif'; g.textAlign = 'center'; g.fillText('PLAY SESSION WITH THE CATS · 10 TND', w / 2, h - 45);
+});
+box(2.05, 1.25, .04, brassMat(), 2.1, 2.2, -4.99);
+const menu = new THREE.Mesh(new THREE.PlaneGeometry(1.95, 1.17), new THREE.MeshBasicMaterial({ map: menuTex }));
+menu.position.set(2.1, 2.2, -4.965); scene.add(menu);
+// neon logo
+const neonTex = canvasTex(640, 170, (g, w, h) => {
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '600 112px Fraunces, serif';
+  g.shadowColor = '#f0cf8a'; g.shadowBlur = 30; g.fillStyle = '#fff4dc';
+  g.fillText('katkafi', w / 2, h / 2); g.shadowBlur = 10; g.fillText('katkafi', w / 2, h / 2);
+});
+const neon = new THREE.Mesh(new THREE.PlaneGeometry(2.1, .56), new THREE.MeshBasicMaterial({ map: neonTex, transparent: true, toneMapped: false, depthWrite: false }));
+neon.position.set(2.1, 3.38, -4.98); scene.add(neon);
+const neonLight = new THREE.PointLight('#f3d398', 2.4, 4, 2); neonLight.position.set(2.1, 3.3, -4.5); scene.add(neonLight);
+// pendant lights over the bar
+for (const x of [1.2, 2.1, 3.0]) {
+  cyl(.006, .006, 1.0, C.espresso, x, 3.5, -4.2, scene, 6);
+  add(new THREE.ConeGeometry(.16, .18, 24, 1, true), brassMat({ side: THREE.DoubleSide }), x, 2.95, -4.2).castShadow = false;
+  add(new THREE.SphereGeometry(.04, 10, 8), new THREE.MeshBasicMaterial({ color: '#fff3d0', toneMapped: false }), x, 2.88, -4.2).castShadow = false;
+}
+const barLight = new THREE.PointLight('#ffe0b0', 3, 5, 2); barLight.position.set(2.1, 2.7, -4.0); scene.add(barLight);
+
+/* ---------- Cat tree ---------- */
+const tree = new THREE.Group(); tree.position.set(-4.15, 0, .9); scene.add(tree);
+const carpet = mat('#cfc4ae', { roughness: 1 }), sisal = mat('#b49a6c', { roughness: 1 });
+box(.95, .08, .95, carpet, 0, .04, 0, tree);
+cyl(.06, .06, 1.9, sisal, -.2, 1.0, -.2, tree, 12); cyl(.06, .06, 1.1, sisal, .25, .6, .25, tree, 12);
+cyl(.34, .34, .06, carpet, -.2, 1.95, -.2, tree, 28); cyl(.3, .3, .06, carpet, .25, 1.15, .25, tree, 28);
+box(.5, .45, .5, carpet, .2, .305, -.2, tree);
+const hole = new THREE.Mesh(new THREE.CircleGeometry(.12, 24), new THREE.MeshBasicMaterial({ color: '#1f1c18' }));
+hole.position.set(.451, .3, -.2); hole.rotation.y = Math.PI / 2; tree.add(hole);
+const toy = new THREE.Group(); toy.position.set(.45, 1.12, .3); tree.add(toy);
+cyl(.004, .004, .35, C.cream, 0, -.175, 0, toy, 4); sphere(.04, C.terra, 0, -.37, 0, toy);
+
+/* ---------- Phone booth ---------- */
+const booth = new THREE.Group(); booth.position.set(3.8, 0, 1.5); booth.rotation.y = .35; scene.add(booth);
+const bm = mat(C.terra);
+for (const [x, z] of [[-.55, -.55], [.55, -.55], [-.55, .55], [.55, .55]]) box(.09, 2.5, .09, bm, x, 1.29, z, booth);
+box(1.25, .14, 1.25, bm, 0, 2.6, 0, booth); box(1.2, .08, 1.2, bm, 0, .04, 0, booth);
+box(.05, 2.4, 1.05, bm, .55, 1.25, 0, booth);
+const glass = new THREE.MeshStandardMaterial({ color: '#cfeae6', transparent: true, opacity: .22, roughness: .1 });
+for (const z of [-.55, .55]) { const g = box(1.05, 2.3, .02, glass, 0, 1.25, z, booth); g.castShadow = false; }
+const front = box(.02, 2.3, 1.05, glass, -.55, 1.25, 0, booth); front.castShadow = false;
+for (const y of [.6, 1.2, 1.8]) { box(.03, .04, 1.05, bm, -.55, y, 0, booth); box(1.05, .04, .03, bm, 0, y, .55, booth); box(1.05, .04, .03, bm, 0, y, -.55, booth); }
+const boothSign = new THREE.Mesh(new THREE.PlaneGeometry(.95, .22), new THREE.MeshBasicMaterial({ map: signTex('Say hello', C.espresso, '#e9cf98', 256, 60, '600 34px Fraunces, serif'), toneMapped: false }));
+boothSign.position.set(-.635, 2.6, 0); boothSign.rotation.y = -Math.PI / 2; booth.add(boothSign);
+box(.08, .32, .2, C.espresso, .5, 1.5, 0, booth); box(.07, .06, .26, C.espresso, .45, 1.72, 0, booth);
+cyl(.2, .2, .05, C.tan, .1, .6, 0, booth); cyl(.03, .03, .55, C.espresso, .1, .3, 0, booth, 8);
+const boothLight = new THREE.PointLight('#ffd59a', 1.2, 2.5, 2); boothLight.position.set(0, 2.3, 0); booth.add(boothLight);
+
+/* ---------- Plants, beanbag, cat bed, posters ---------- */
+function plant(x, z, s = 1) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.scale.setScalar(s); scene.add(g);
+  cyl(.24, .18, .42, C.terra, 0, .21, 0, g);
+  [[0, .75, 0, .32], [.18, .95, .05, .24], [-.15, 1.0, -.08, .22], [.02, 1.2, .1, .2]].forEach(([px, py, pz, r], i) => sphere(r, i % 2 ? C.leaf2 : C.leaf, px, py, pz, g));
+  cyl(.03, .03, .5, C.woodDark, 0, .55, 0, g, 6);
+}
+plant(-4.3, -4.3, 1.15); plant(4.3, -4.3, .9); plant(-4.3, 4.2, 1); plant(-.25, -4.5, .65);
+function hangingPlant(x, z) {
+  cyl(.005, .005, .8, C.espresso, x, 3.6, z, scene, 4);
+  cyl(.14, .1, .18, C.cream, x, 3.1, z, scene, 16);
+  [[0, 3.05, 0, .16], [.1, 2.92, .05, .1], [-.09, 2.88, -.04, .09], [.03, 2.78, .08, .07]].forEach(([dx, y, dz, r], i) => sphere(r, i % 2 ? C.leaf2 : C.leaf, x + dx, y, z + dz));
+}
+hangingPlant(-3.4, -4.3); hangingPlant(4.0, -3.6); hangingPlant(.6, -4.55);
+const bean = sphere(.55, mat(C.blue, { roughness: .95 }), -2.9, .32, -3.5); bean.scale.set(1, .55, 1);
+const bed = new THREE.Group(); bed.position.set(2.4, 0, 2.2); scene.add(bed);
+add(new THREE.TorusGeometry(.26, .08, 10, 28), C.tan, 0, .07, 0, bed).rotation.x = -Math.PI / 2;
+cyl(.26, .26, .05, C.cream, 0, .03, 0, bed, 28);
+const yarn = sphere(.07, C.blue, -1.4, .07, 1.75);
+
+const art = (x, y, z, rotY, w, h, tex) => {
+  const grp = new THREE.Group(); grp.position.set(x, y, z); grp.rotation.y = rotY; scene.add(grp);
+  box(w + .08, h + .08, .04, C.espresso, 0, 0, 0, grp);
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat('#fff', { map: tex })); p.position.z = .022; grp.add(p);
+};
+const posterTex = (bg, fur, patch, text) => canvasTex(256, 320, (g, W, H) => {
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  drawCatFace(g, W / 2, H * .42, 70, fur, fur === '#2b2524' ? '#e8b44a' : '#2a1a14', patch);
+  g.fillStyle = C.cream; g.font = 'italic 600 30px Fraunces, serif'; g.textAlign = 'center'; g.fillText(text, W / 2, H - 40);
+});
+const mascotTex = texLoader.load('katkafi-logo.png'); mascotTex.colorSpace = THREE.SRGBColorSpace;
+const mascotPoster = canvasTex(8, 8, (g) => { g.fillStyle = '#d97bc4'; g.fillRect(0, 0, 8, 8); }); // the logo's pink
+art(4.95, 2.35, .3, -Math.PI / 2, .8, .8, mascotPoster);
+const mascotFace = new THREE.Mesh(new THREE.PlaneGeometry(.7, .7 * 296 / 326), new THREE.MeshBasicMaterial({ map: mascotTex, transparent: true }));
+mascotFace.position.set(4.925, 2.35, .3); mascotFace.rotation.y = -Math.PI / 2; scene.add(mascotFace);
+art(-4.95, 2.4, 3.0, Math.PI / 2, .7, .875, posterTex(C.blue, '#d98a3d', null, 'adopt'));
+art(-3.6, 2.4, -4.97, 0, .6, .75, posterTex(C.terra, '#fbf6ee', '#d9b48f', 'purr'));
+
+// Gallery wall: framed photos with a cream mat, slightly tilted like a real café wall
+function photo(src, aspect, h, x, y, z, rotY, frameCol = C.espresso, tilt = 0) {
+  const w = h * aspect;
+  const grp = new THREE.Group(); grp.position.set(x, y, z); grp.rotation.set(0, rotY, 0); scene.add(grp);
+  const inner = new THREE.Group(); inner.rotation.z = tilt; grp.add(inner);
+  box(w + .14, h + .14, .04, frameCol, 0, 0, 0, inner);
+  const matte = new THREE.Mesh(new THREE.PlaneGeometry(w + .06, h + .06), mat(C.cream)); matte.position.z = .021; inner.add(matte);
+  const tex = texLoader.load(src); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const pic = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat('#ffffff', { map: tex, roughness: .6 })); pic.position.z = .023; inner.add(pic);
+}
+const L = Math.PI / 2, R = -Math.PI / 2;
+photo('wall/w8.jpg', .673, .95, -4.95, 2.5, .35, L, C.brass, .02);         // left wall, between the board and the cat tree
+photo('wall/w11.jpg', 1.016, .52, .1, 2.5, -4.97, 0, C.terra, -.04);       // back wall, between window and menu
+photo('wall/w10.jpg', .563, .72, .76, 2.22, -4.97, 0, C.espresso, .03);    // milky kitten, right next to the menu board
+photo('wall/w6.jpg', .564, .95, -4.95, 2.45, -3.95, L, C.cream, .03);      // left wall, near the window corner
+photo('wall/w7.jpg', .75, .82, -4.95, 2.5, 1.95, L, C.woodDark, -.03);     // left wall, above the cat tree
+photo('wall/w9.jpg', .707, .85, 4.95, 2.4, -3.45, R, C.blue, .03);         // right wall, by the coffee bar
+photo('wall/w12.jpg', 1.0, .6, 4.95, 2.35, 3.1, R, C.terra, .04);         // right wall, behind the phone booth
+
+/* ---------- Teaser ad: our video, playing silently in a brass frame beside the menu ---------- */
+const teaserVid = document.createElement('video');
+Object.assign(teaserVid, { src: 'katkafi-stay-tuned-loop.mp4', muted: true, loop: true, playsInline: true, preload: 'auto' });
+teaserVid.setAttribute('muted', ''); teaserVid.setAttribute('playsinline', '');
+const teaserAd = new THREE.Group(); teaserAd.position.set(3.98, 2.3, -4.97); scene.add(teaserAd);
+const TW = .95, TH = TW * 328 / 640; // a teaser-free boomerang of the 'stay tuned!' letters
+box(TW + .1, TH + .1, .04, brassMat(), 0, 0, 0, teaserAd);
+box(TW + .02, TH + .02, .01, C.espresso, 0, 0, .024, teaserAd);
+const teaserPoster = texLoader.load('katkafi-stay-tuned.jpg'); teaserPoster.colorSpace = THREE.SRGBColorSpace;
+const teaserTex = new THREE.VideoTexture(teaserVid); teaserTex.colorSpace = THREE.SRGBColorSpace;
+for (const t of [teaserPoster, teaserTex]) t.repeat.set(1, 328 / 360); // trim a stray pen mark off the top
+const teaserScreen = new THREE.Mesh(new THREE.PlaneGeometry(TW, TH), new THREE.MeshBasicMaterial({ map: teaserPoster, toneMapped: false }));
+teaserScreen.position.z = .031; teaserScreen.userData.teaser = true; teaserAd.add(teaserScreen);
+teaserVid.addEventListener('playing', () => { teaserScreen.material.map = teaserTex; teaserScreen.material.needsUpdate = true; }, { once: true });
+const playBadge = new THREE.Mesh(new THREE.PlaneGeometry(.13, .13), new THREE.MeshBasicMaterial({ transparent: true, toneMapped: false, depthWrite: false,
+  map: canvasTex(128, 128, (g, w, h) => {
+    g.fillStyle = 'rgba(15,24,20,.55)'; g.beginPath(); g.arc(64, 64, 58, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#d9b877'; g.lineWidth = 4; g.stroke();
+    g.fillStyle = '#f2ead8'; g.beginPath(); g.moveTo(52, 40); g.lineTo(90, 64); g.lineTo(52, 88); g.closePath(); g.fill();
+  }) }));
+playBadge.position.set(TW / 2 - .1, -TH / 2 + .1, .035); playBadge.userData.teaser = true; teaserAd.add(playBadge);
+const teaserLabel = new THREE.Mesh(new THREE.PlaneGeometry(.78, .11), new THREE.MeshBasicMaterial({ transparent: true, toneMapped: false,
+  map: canvasTex(512, 72, (g, w, h) => {
+    g.fillStyle = '#d9b877'; g.font = '600 30px "DM Sans", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.letterSpacing = '6px'; g.fillText('NOW SHOWING', w / 2, h / 2);
+  }) }));
+teaserLabel.position.set(0, -TH / 2 - .13, .01); teaserLabel.userData.teaser = true; teaserAd.add(teaserLabel);
+const teaserGlow = new THREE.PointLight('#ffe6b8', .9, 1.8, 2); teaserGlow.position.set(3.98, 2.3, -4.5); scene.add(teaserGlow);
+
+/* ================= Cats ================= */
+const CAT_COATS = {
+  mascot:  { base: '#fbf6ee', back: '#d9b48f', head: '#fbf6ee', headPatch: '#d9b48f', muzzle: '#fbf6ee', ears: '#d9b48f', tail: '#d9b48f', eye: '#2f4fa8', lineEyes: true },
+  ginger:  { base: '#d98a3d', back: '#c4742b', head: '#d98a3d', muzzle: '#f3e0c4', ears: '#c4742b', tail: '#c4742b', eye: '#4f7d3a' },
+  black:   { base: '#2b2524', head: '#2b2524', muzzle: '#3a3230', ears: '#2b2524', tail: '#2b2524', eye: '#e8b44a' },
+  tuxedo:  { base: '#2b2524', chest: '#fbf6ee', head: '#2b2524', muzzle: '#fbf6ee', ears: '#2b2524', tail: '#2b2524', paws: '#fbf6ee', eye: '#7cb342' },
+  gray:    { base: '#8d8f94', back: '#7a7c80', head: '#8d8f94', muzzle: '#c9cbcf', ears: '#7a7c80', tail: '#7a7c80', eye: '#e8b44a' },
+  cream:   { base: '#efdcbc', head: '#efdcbc', muzzle: '#fbf3e4', ears: '#e3c9a0', tail: '#e3c9a0', eye: '#4f7d3a' },
+  siamese: { base: '#efe3cf', head: '#efe3cf', muzzle: '#5a4334', ears: '#4a362a', tail: '#4a362a', paws: '#5a4334', eye: '#2f6fd0' },
+  calico:  { base: '#fbf6ee', back: '#d98a3d', patch: '#2b2524', head: '#fbf6ee', headPatch: '#d98a3d', muzzle: '#fbf6ee', ears: '#d98a3d', tail: '#2b2524', eye: '#4f7d3a' },
+};
+const SPH = new THREE.SphereGeometry(1, 18, 12);
+const EAR = new THREE.ConeGeometry(1, 1, 4);
+const CUBE = new THREE.BoxGeometry(1, 1, 1);
+const TAILSEG = new THREE.CylinderGeometry(.018, .021, .062, 8).translate(0, .031, 0);
+const LEG = new THREE.CylinderGeometry(.022, .019, .19, 8).translate(0, -.095, 0);
+const catMats = new Map();
+const catMat = col => { if (!catMats.has(col)) catMats.set(col, new THREE.MeshStandardMaterial({ color: col, roughness: .92 })); return catMats.get(col); };
+
+function makeCat({ coat = 'ginger', pose = 'sit', scale = 1, pos = [0, 0, 0], rotY = 0, watch = false, path = null }) {
+  const c = CAT_COATS[coat];
+  const root = new THREE.Group(); root.position.set(...pos); root.rotation.y = rotY; root.scale.setScalar(scale); scene.add(root);
+  const body = new THREE.Group(); root.add(body);
+  const part = (geo, col, x, y, z, sx, sy, sz, p = body) => {
+    const m = new THREE.Mesh(geo, catMat(col)); m.position.set(x, y, z); m.scale.set(sx, sy, sz);
+    m.castShadow = m.receiveShadow = true; p.add(m); return m;
+  };
+  const legs = [];
+  let head = [0, .34, .04], tailBase = [0, .03, -.12], tailTilt = -Math.PI / 2, curl = .35;
+  if (pose === 'sit') {
+    part(SPH, c.base, 0, .16, -.01, .12, .155, .13).rotation.x = -.15;
+    if (c.back) part(SPH, c.back, 0, .2, -.045, .112, .125, .105);
+    if (c.patch) part(SPH, c.patch, .06, .23, -.06, .06, .06, .06);
+    if (c.chest) part(SPH, c.chest, 0, .17, .075, .07, .1, .06);
+    for (const s of [-1, 1]) {
+      part(SPH, c.base, s * .075, .075, -.04, .075, .075, .1);
+      part(LEG, c.paws || c.base, s * .04, .18, .085, 1, .95, 1);
+      part(SPH, c.paws || c.base, s * .04, .014, .1, .028, .02, .036);
+    }
+  } else if (pose === 'loaf') {
+    part(SPH, c.base, 0, .1, 0, .13, .1, .19);
+    if (c.back) part(SPH, c.back, 0, .125, -.02, .122, .085, .16);
+    if (c.patch) part(SPH, c.patch, -.06, .15, -.06, .06, .05, .07);
+    head = [0, .19, .17]; tailBase = [.05, .05, -.18]; curl = .42;
+  } else if (pose === 'sleep') {
+    part(SPH, c.base, 0, .085, 0, .17, .085, .15);
+    if (c.back) part(SPH, c.back, 0, .105, -.015, .15, .07, .13);
+    if (c.patch) part(SPH, c.patch, .07, .12, -.04, .06, .04, .06);
+    head = [.1, .08, .11]; tailBase = [-.13, .04, -.04]; curl = .55;
+  } else if (pose === 'walk') {
+    part(SPH, c.base, 0, .24, 0, .105, .1, .19);
+    if (c.back) part(SPH, c.back, 0, .27, -.01, .1, .085, .16);
+    if (c.patch) part(SPH, c.patch, .05, .29, -.05, .05, .05, .06);
+    if (c.chest) part(SPH, c.chest, 0, .22, .12, .07, .07, .06);
+    for (const [x, z] of [[-.05, .12], [.05, .12], [-.05, -.11], [.05, -.11]]) {
+      const lg = new THREE.Group(); lg.position.set(x, .21, z); body.add(lg);
+      part(LEG, c.paws || c.base, 0, 0, 0, 1, 1.05, 1, lg);
+      part(SPH, c.paws || c.base, 0, -.2, .01, .026, .018, .034, lg);
+      legs.push(lg);
+    }
+    head = [0, .35, .2]; tailBase = [0, .27, -.17]; tailTilt = -.45; curl = .08;
+  }
+  // head
+  const hg = new THREE.Group(); hg.position.set(...head); body.add(hg);
+  if (pose === 'sleep') hg.rotation.set(.15, .5, .6);
+  part(SPH, c.head, 0, 0, 0, .095, .085, .085, hg);
+  if (c.headPatch) part(SPH, c.headPatch, 0, .03, -.006, .092, .06, .08, hg);
+  part(SPH, c.muzzle, 0, -.026, .058, .046, .032, .032, hg);
+  part(SPH, '#d98c8c', 0, -.01, .088, .011, .009, .009, hg);
+  const ears = [];
+  for (const s of [-1, 1]) {
+    const e = part(EAR, c.ears, s * .05, .072, -.005, .032, .058, .022, hg);
+    e.rotation.set(0, Math.PI / 4, -s * .32); ears.push(e);
+    if (pose === 'sleep') part(CUBE, '#3a2a22', s * .036, .004, .079, .03, .005, .006, hg);
+    else if (c.lineEyes) part(CUBE, c.eye, s * .036, .01, .078, .012, .04, .008, hg);
+    else { part(SPH, c.eye, s * .037, .012, .068, .017, .017, .012, hg); part(SPH, '#111111', s * .037, .012, .08, .006, .013, .004, hg); }
+  }
+  // tail: a chain of joints so it can swish
+  const tailRoot = new THREE.Group(); tailRoot.position.set(...tailBase); tailRoot.rotation.x = tailTilt; body.add(tailRoot);
+  const tail = []; let parent = tailRoot;
+  for (let i = 0; i < 6; i++) {
+    const j = new THREE.Group(); if (i) j.position.y = .055; parent.add(j);
+    part(TAILSEG, c.tail, 0, 0, 0, 1 - i * .06, 1, 1 - i * .06, j);
+    tail.push(j); parent = j;
+  }
+  const cat = { root, body, head: hg, ears, tail, legs, pose, watch, path, scale, curl, baseY: pos[1], phase: Math.random() * 10, hopAt: -9 };
+  root.traverse(o => { o.userData.cat = cat; });
+  return cat;
+}
+
+const cats = [
+  { coat: 'mascot', pose: 'sit', pos: [-.15, .8, -.75], rotY: .2, watch: true },      // on the café table
+  { coat: 'ginger', pose: 'loaf', pos: [.75, .8, -1.2], rotY: -.7 },
+  { coat: 'gray', pose: 'sleep', pos: [-.7, .03, .15], rotY: 1 },                      // on the rug
+  { coat: 'black', pose: 'sit', pos: [3.4, 1.06, -4.25], rotY: -.4, watch: true },     // on the bar
+  { coat: 'cream', pose: 'loaf', pos: [-2.15, 1.455, -4.86], rotY: Math.PI / 2, scale: .8 }, // window sill
+  { coat: 'tuxedo', pose: 'sit', pos: [-1.0, 1.455, -4.84], rotY: Math.PI, scale: .8 }, // looking out the window
+  { coat: 'siamese', pose: 'sleep', pos: [-2.9, .6, -3.5], rotY: .5 },                 // on the beanbag
+  { coat: 'ginger', pose: 'sit', pos: [-4.35, 1.98, .7], rotY: 1.2, watch: true },     // cat tree top
+  { coat: 'calico', pose: 'loaf', pos: [-3.9, 1.18, 1.15], rotY: 1.0 },                // cat tree middle
+  { coat: 'gray', pose: 'sleep', pos: [-3.95, .53, .7], rotY: 0, scale: .85 },         // on the condo
+  { coat: 'calico', pose: 'sit', pos: [4.3, .9, -2.1], rotY: -1.4, watch: true },      // grooming table
+  { coat: 'black', pose: 'loaf', pos: [3.8, 2.67, 1.5], rotY: -1.2 },                  // on the booth roof
+  { coat: 'ginger', pose: 'sleep', pos: [2.4, .055, 2.2], rotY: 2, scale: .9 },        // cat bed
+  { coat: 'mascot', pose: 'sit', pos: [-1.65, 0, 1.5], rotY: .8, scale: .6 },          // kitten with yarn
+  { coat: 'tuxedo', pose: 'loaf', pos: [-2.35, 0, 2.95], rotY: 2.4 },                  // under the swing
+  { coat: 'siamese', pose: 'sit', pos: [1.95, .48, -.95], rotY: 2.1, watch: true },    // on a bistro chair
+  { coat: 'cream', pose: 'sit', pos: [4.35, 0, -3.3], rotY: -.8, scale: .9, watch: true },
+  { coat: 'tuxedo', pose: 'walk', path: { cx: .2, cz: -.6, rx: 2.6, rz: 1.9, speed: .32, u: 0 } },
+  { coat: 'cream', pose: 'walk', path: { cx: .4, cz: 2.3, rx: 1.7, rz: .4, speed: .28, u: 2 } },
+  { coat: 'gray', pose: 'walk', path: { cx: 1.9, cz: -3.55, rx: 1.4, rz: .25, speed: .25, u: 4 }, scale: .9 },
+].map(makeCat);
+
+const camLocal = new THREE.Vector3();
+function animateCats(t, dt) {
+  for (const cat of cats) {
+    const t2 = t + cat.phase, sleeping = cat.pose === 'sleep';
+    // walking cats follow an ellipse and swing their legs
+    if (cat.path) {
+      const p = cat.path; p.u += p.speed * dt / ((p.rx + p.rz) / 2);
+      const x = p.cx + p.rx * Math.cos(p.u), z = p.cz + p.rz * Math.sin(p.u);
+      cat.root.position.set(x, cat.root.position.y, z);
+      cat.root.rotation.y = Math.atan2(-p.rx * Math.sin(p.u), p.rz * Math.cos(p.u));
+      cat.legs.forEach((lg, i) => { lg.rotation.x = Math.sin(t * 9 + ((i === 0 || i === 3) ? 0 : Math.PI)) * .5; });
+      cat.body.position.y = Math.abs(Math.sin(t * 9)) * .008;
+    }
+    cat.tail.forEach((j, i) => {
+      const amp = sleeping ? .04 : cat.path ? .22 : .16;
+      j.rotation.z = cat.curl + Math.sin(t2 * (sleeping ? .8 : 2.2) - i * .7) * amp;
+      if (cat.path) j.rotation.x = -.12;
+    });
+    cat.body.scale.y = 1 + Math.sin(t2 * (sleeping ? 1.6 : 2.4)) * (sleeping ? .045 : .012);
+    if (!sleeping) {
+      let yaw = Math.sin(t2 * .35) * .45;
+      if (cat.watch) {
+        camLocal.copy(camera.position).sub(cat.root.position);
+        let a = Math.atan2(camLocal.x, camLocal.z) - cat.root.rotation.y;
+        a = Math.atan2(Math.sin(a), Math.cos(a));
+        yaw = clamp(a, -1.0, 1.0) + Math.sin(t2 * .5) * .1;
+      }
+      cat.head.rotation.y += (yaw - cat.head.rotation.y) * Math.min(1, dt * 3);
+      cat.head.rotation.z = Math.sin(t2 * .23) * .12;
+      const twitch = Math.sin(t2 * 3.1) > .985 ? .35 : 0;
+      cat.ears.forEach(e => { e.rotation.x = twitch; });
+    }
+    const h = t - cat.hopAt;
+    cat.root.position.y = cat.baseY + (h < .45 ? Math.sin(h / .45 * Math.PI) * .12 : 0);
+  }
+  yarn.position.x = -1.4 + Math.sin(t * 1.1) * .22;
+  yarn.rotation.z = -(yarn.position.x + 1.4) / .07;
+  toy.rotation.z = Math.sin(t * 1.7) * .25;
+}
+
+/* ================= Characters ================= */
+// Flat cut-out people, billboarded to face the camera and animated by bending their geometry.
+const blobTex = canvasTex(128, 128, (g, w, h) => {
+  const r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  r.addColorStop(0, 'rgba(0,0,0,.5)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = r; g.fillRect(0, 0, w, h);
+});
+const CHARACTERS = [
+  { src: 'characters/c1.png', aspect: 233 / 725, h: 1.66, pos: [4.1, 0, -1.0], spot: 'groom', say: 'Who wants a brush?',
+    anim: { sway: .022, freq: .9, breathe: .009, lean: -.025, phase: 0 } },
+  { src: 'characters/c2.png', aspect: 269 / 748, h: 1.72, parent: swing, pos: [0, -3.33, .03], spot: 'tree', say: "This swing is mine. Not the cats'.", noBlob: true,
+    anim: { sway: .015, freq: .65, breathe: .01, lean: 0, phase: 1 } },
+  { src: 'characters/c3.png', aspect: 231 / 726, h: 1.64, pos: [-4.05, 0, -.45], spot: 'adopt', say: 'Mimi found a home today!',
+    anim: { sway: .03, freq: .7, breathe: .008, lean: .035, phase: 2 } },
+  { src: 'characters/c4.png', aspect: 239 / 728, h: 1.68, pos: [1.6, 0, -4.86], spot: 'bar', say: 'One latte, extra purr?', noBlob: true,
+    anim: { sway: .02, freq: .8, breathe: .009, lean: 0, phase: 3 } },
+  { src: 'characters/c5.png', aspect: 224 / 738, h: 1.64, pos: [3.6, .08, 1.58], spot: 'booth', say: 'Katkafi, how can I help?',
+    anim: { sway: .035, freq: 1.5, breathe: .008, lean: 0, phase: 4, bounce: .014 } },
+];
+const chars = CHARACTERS.map(c => {
+  const tex = texLoader.load(c.src);
+  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const w = c.h * c.aspect;
+  const geo = new THREE.PlaneGeometry(w, c.h, 1, 20); geo.translate(0, c.h / 2, 0);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, alphaTest: .45, side: THREE.DoubleSide, color: '#efe7da', toneMapped: false }));
+  mesh.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: tex, alphaTest: .45, side: THREE.DoubleSide });
+  mesh.castShadow = true; mesh.frustumCulled = false;
+  mesh.position.set(...c.pos);
+  (c.parent || scene).add(mesh);
+  if (!c.noBlob) {
+    const blob = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.8, .5), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false }));
+    blob.rotation.x = -Math.PI / 2; blob.position.set(c.pos[0], c.pos[1] + .025, c.pos[2]); scene.add(blob);
+  }
+  const ch = { ...c, mesh, base: Float32Array.from(geo.attributes.position.array) };
+  mesh.userData.person = ch;
+  return ch;
+});
+const charWorld = new THREE.Vector3();
+function animateChars(t) {
+  for (const c of chars) {
+    const a = c.anim, attr = c.mesh.geometry.attributes.position, arr = attr.array, b = c.base;
+    const sway = a.sway * Math.sin(t * a.freq + a.phase) + a.lean;
+    const breathe = 1 + a.breathe * Math.sin(t * 1.8 + a.phase);
+    for (let i = 0; i < arr.length; i += 3) {
+      const u = b[i + 1] / c.h;
+      arr[i] = b[i] + sway * c.h * u * u;
+      arr[i + 1] = b[i + 1] * breathe;
+    }
+    attr.needsUpdate = true;
+    c.mesh.position.y = c.pos[1] + (a.bounce ? Math.max(0, Math.sin(t * 5 + a.phase)) * a.bounce : 0);
+    c.mesh.getWorldPosition(charWorld);
+    c.mesh.rotation.y = Math.atan2(camera.position.x - charWorld.x, camera.position.z - charWorld.z) - (c.parent ? c.parent.rotation.y : 0);
+  }
+}
+
+/* ================= Lights ================= */
+scene.add(new THREE.HemisphereLight('#fff6e8', '#3a2a22', 1.25));
+const sun = new THREE.DirectionalLight('#fff0d8', 2.0);
+sun.position.set(-1.6, 3.6, -4.6); sun.target.position.set(.8, 0, 1); scene.add(sun, sun.target);
+sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -7, right: 7, top: 7, bottom: -7, near: .1, far: 14 });
+sun.shadow.bias = -.0004; sun.shadow.normalBias = .02;
+const lamp = new THREE.PointLight('#ffd9a6', 5, 7, 2); lamp.position.set(0, 2.32, -1); scene.add(lamp);
+const fill = new THREE.PointLight('#ffe9cc', 2.5, 10, 2); fill.position.set(0, 3.5, 3); scene.add(fill);
+
+clearInterval(fakeLoad);
+
+/* ================= Camera control ================= */
+const HOME = { pos: new THREE.Vector3(0, 1.6, 3.8), fov: 60 };
+const INTRO = { pos: new THREE.Vector3(.4, 1.9, 4.7), fov: 72 };
+const state = { yaw: .2, pitch: -.08, fov: INTRO.fov, pos: INTRO.pos.clone() };
+const target = { yaw: .2, pitch: -.08, fov: INTRO.fov, pos: INTRO.pos.clone() };
+let entered = false, focused = null, userYaw = 0, userPitch = -.1, userFov = HOME.fov;
+
+const pointers = new Map();
+let pinchStart = 0, fovStart = 60, downAt = null;
+const pinchDist = () => { const [a, b] = [...pointers.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  downAt = pointers.size === 1 ? { x: e.clientX, y: e.clientY } : null;
+  if (pointers.size === 2) { pinchStart = pinchDist(); fovStart = userFov; }
+  document.body.classList.add('dragging');
+});
+canvas.addEventListener('pointermove', e => {
+  const p = pointers.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (!entered || focused) return;
+  if (pointers.size === 1) {
+    userYaw = clamp(userYaw + dx * .0035, -1.25, 1.25);
+    userPitch = clamp(userPitch + dy * .0028, -.55, .35);
+  } else if (pointers.size === 2) {
+    userFov = clamp(fovStart * pinchStart / pinchDist(), 40, 72);
+  }
+});
+const endPointer = e => {
+  if (downAt && pointers.size === 1 && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 6) handleTap(e);
+  pointers.delete(e.pointerId); downAt = null;
+  if (!pointers.size) document.body.classList.remove('dragging');
+};
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', e => { downAt = null; endPointer(e); });
+canvas.addEventListener('wheel', e => { if (entered && !focused) { e.preventDefault(); userFov = clamp(userFov + e.deltaY * .03, 40, 72); } }, { passive: false });
+
+/* ================= Tapping cats and people ================= */
+const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+const tappable = [...cats.map(c => c.root), ...chars.map(c => c.mesh), teaserAd];
+const MEOWS = ['Meow!', 'Mrrp?', 'Purrr…', 'Mew!', 'Prrrt!'];
+function handleTap(e) {
+  if (!entered || focused) return;
+  ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hit = raycaster.intersectObjects(tappable, true)[0];
+  if (!hit) return;
+  const cat = hit.object.userData.cat, person = hit.object.userData.person;
+  if (hit.object.userData.teaser) openTeaser();
+  else if (cat) {
+    cat.hopAt = clock.elapsedTime;
+    Sound.meow(cat.pose === 'sleep');
+    const i = speakers.findIndex(s => s.cat === cat);
+    if (i >= 0) showBubble(i, cat.pose === 'sleep' ? 'zzz… mrr?' : MEOWS[Math.floor(Math.random() * MEOWS.length)], 1.6);
+  } else if (person) focus(person.spot);
+}
+
+/* ================= Hotspots + panel ================= */
+const hsWrap = $('#hotspots'), nav = $('.spots-nav'), panel = $('#panel'), panelBody = $('.panel-body');
+const hsEls = SPOTS.map((s, i) => {
+  const b = document.createElement('button');
+  b.className = 'hotspot'; b.setAttribute('aria-label', `Explore: ${s.label}`);
+  b.innerHTML = `<span class="dot"></span><span class="label">${s.label}</span>`;
+  b.addEventListener('click', () => focus(s.id));
+  hsWrap.appendChild(b);
+  const n = document.createElement('button');
+  n.innerHTML = `<b>0${i + 1}</b>${s.label}`; n.addEventListener('click', () => focus(s.id));
+  nav.appendChild(n);
+  return b;
+});
+document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => focus(b.dataset.open)));
+
+function focus(id) {
+  const s = SPOTS.find(x => x.id === id); if (!s) return;
+  focused = s;
+  const obj = new THREE.Vector3(...s.pos);
+  const p = HOME.pos.clone().lerp(new THREE.Vector3(obj.x, HOME.pos.y, obj.z), s.zoom);
+  const d = obj.clone().sub(p);
+  let yaw = Math.atan2(-d.x, -d.z);
+  const pitch = Math.atan2(d.y, Math.hypot(d.x, d.z));
+  if (innerWidth > 820) yaw -= .17; // keep the object clear of the side panel
+  Object.assign(target, { yaw, pitch: innerWidth > 820 ? pitch : pitch - .12, fov: s.fov });
+  target.pos.copy(p);
+  panelBody.innerHTML = `
+    <p class="kicker">${s.kicker}</p>
+    <h2>${s.title}</h2>
+    <p class="body">${s.body}</p>
+    <ul>${s.points.map(([a, b]) => `<li><span>${a}</span><span>${b}</span></li>`).join('')}</ul>
+    <a class="cta" href="${s.cta[1]}">${s.cta[0]} →</a>
+    ${s.note ? `<p class="note">${s.note}</p>` : ''}`;
+  panel.classList.add('open'); panel.setAttribute('aria-hidden', 'false'); panel.scrollTop = 0;
+  document.body.classList.add('focused');
+  setTimeout(() => $('.back').focus({ preventScroll: true }), 300);
+}
+function unfocus() {
+  if (!focused) return;
+  focused = null;
+  panel.classList.remove('open'); panel.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('focused');
+}
+$('.back').addEventListener('click', unfocus);
+
+/* ================= Teaser lightbox ================= */
+const tz = $('#teaser'), tzVideo = $('#teaser video');
+function openTeaser() {
+  tz.classList.add('open'); tz.setAttribute('aria-hidden', 'false');
+  teaserVid.pause(); Radio.hold(true); Sound.hold(true);
+  tzVideo.currentTime = 0; tzVideo.muted = false;
+  tzVideo.play().catch(() => {});
+  setTimeout(() => $('.tz-close').focus({ preventScroll: true }), 200);
+}
+function closeTeaser() {
+  if (!tz.classList.contains('open')) return false;
+  tz.classList.remove('open'); tz.setAttribute('aria-hidden', 'true');
+  tzVideo.pause(); teaserVid.play().catch(() => {}); Radio.hold(false); Sound.hold(false);
+  return true;
+}
+$('.tz-close').addEventListener('click', closeTeaser);
+tz.addEventListener('click', e => { if (e.target === tz) closeTeaser(); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !closeTeaser()) unfocus(); });
+// a hotspot for the ad, and a pointer cursor when hovering it
+const teaserSpot = document.createElement('button');
+teaserSpot.className = 'hotspot teaser-spot'; teaserSpot.setAttribute('aria-label', 'Watch our teaser');
+teaserSpot.innerHTML = '<span class="dot"></span><span class="label">▶ Watch our teaser</span>';
+teaserSpot.addEventListener('click', openTeaser); hsWrap.appendChild(teaserSpot);
+const TEASER_DOT = new THREE.Vector3(3.98 + .55, 2.3 + .32, -4.9);
+canvas.addEventListener('pointermove', e => {
+  if (pointers.size || !entered || focused) { canvas.style.cursor = ''; return; }
+  ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  canvas.style.cursor = raycaster.intersectObject(teaserAd, true).length ? 'pointer' : '';
+});
+
+const v = new THREE.Vector3();
+function updateHotspots() {
+  const w = innerWidth, h = innerHeight;
+  SPOTS.forEach((s, i) => {
+    v.set(...(s.dot || s.pos)).project(camera);
+    const el = hsEls[i];
+    if (v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) { el.hidden = true; return; }
+    el.hidden = false;
+    el.style.transform = `translate(${(v.x + 1) / 2 * w - 9}px, ${(1 - v.y) / 2 * h - 9}px)`;
+  });
+  v.copy(TEASER_DOT).project(camera);
+  teaserSpot.hidden = v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1;
+  if (!teaserSpot.hidden) teaserSpot.style.transform = `translate(${(v.x + 1) / 2 * w - 9}px, ${(1 - v.y) / 2 * h - 9}px)`;
+}
+
+/* ================= Speech bubbles ================= */
+const bubbleWrap = $('#bubbles');
+const speakers = [
+  ...chars.map(c => ({ obj: c.mesh, lift: c.h + .12, lines: [c.say] })),
+  ...cats.map(cat => ({ obj: cat.head, lift: .16 * cat.scale, cat, lines: cat.pose === 'sleep' ? ['zzz'] : ['Meow.', 'Mrrp?', 'Purrr…'] })),
+];
+speakers.forEach(s => {
+  s.el = document.createElement('div'); s.el.className = 'bubble' + (s.cat ? ' cat' : '');
+  bubbleWrap.appendChild(s.el); s.until = 0;
+});
+function showBubble(i, text, dur = 3) {
+  const s = speakers[i]; s.el.textContent = text; s.until = clock.elapsedTime + dur; s.el.classList.add('show');
+}
+let nextTalk = 2.5;
+const anchor = new THREE.Vector3();
+function updateBubbles(t) {
+  if (t > nextTalk) {
+    const i = Math.random() < .55 ? Math.floor(Math.random() * chars.length) : chars.length + Math.floor(Math.random() * cats.length);
+    const s = speakers[i]; showBubble(i, s.lines[Math.floor(Math.random() * s.lines.length)], s.cat ? 2 : 3);
+    nextTalk = t + 1.6 + Math.random() * 1.6;
+  }
+  for (const s of speakers) {
+    if (!s.el.classList.contains('show')) continue;
+    if (t > s.until) { s.el.classList.remove('show'); continue; }
+    s.obj.getWorldPosition(anchor); anchor.y += s.lift;
+    v.copy(anchor).project(camera);
+    s.el.style.visibility = v.z > 1 || Math.abs(v.x) > 1 ? 'hidden' : 'visible';
+    s.el.style.transform = `translate(${(v.x + 1) / 2 * innerWidth}px, ${(1 - v.y) / 2 * innerHeight}px) translate(-50%, -100%)`;
+  }
+}
+
+/* ================= Radio: Queen's "Cool Cat" through the official YouTube player ================= */
+const store = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked */ } } };
+const Radio = (() => {
+  const VID = 'YUYHeldYuUg', btn = $('.music-btn'), volEl = $('#music-vol');
+  let player = null, ready = false, want = false, held = false;
+  volEl.value = store.get('kk-music-vol') ?? 45;
+  const paint = on => { btn.classList.toggle('on', on); btn.setAttribute('aria-label', on ? 'Pause the radio' : 'Play the radio'); };
+  window.onYouTubeIframeAPIReady = () => {
+    player = new YT.Player('yt-player', {
+      width: 96, height: 54, videoId: VID,
+      playerVars: { playsinline: 1, loop: 1, playlist: VID, controls: 0, rel: 0, modestbranding: 1, disablekb: 1 },
+      events: {
+        onReady: () => { ready = true; player.setVolume(+volEl.value); if (want) player.playVideo(); },
+        onStateChange: e => paint(e.data === 1 || (e.data === 3 && want)),
+      },
+    });
+  };
+  const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s);
+  function play() { want = true; paint(true); store.set('kk-radio', 'on'); if (ready) player.playVideo(); }
+  function pause() { want = false; paint(false); store.set('kk-radio', 'off'); if (ready) player.pauseVideo(); }
+  btn.addEventListener('click', () => (want ? pause() : play()));
+  volEl.addEventListener('input', () => { if (ready) player.setVolume(+volEl.value); store.set('kk-music-vol', volEl.value); });
+  return {
+    autoplay() { if (store.get('kk-radio') !== 'off') play(); },
+    hold(on) { // step aside while the teaser plays, then come back
+      if (on && want) { held = true; if (ready) player.pauseVideo(); }
+      else if (!on && held) { held = false; if (want && ready) player.playVideo(); }
+    },
+  };
+})();
+$('.radio .fold').addEventListener('click', () => $('.radio').classList.toggle('min'));
+if (innerWidth <= 820) $('.radio').classList.add('min');
+
+/* ================= Ambience: the street outside, the café inside and the cats (synthesized, no samples) ================= */
+const Sound = (() => {
+  const btn = $('.amb-btn'), volEl = $('#amb-vol');
+  let ctx = null, master = null, purrGain = null, on = store.get('kk-amb') !== 'off', held = false, t = 0;
+  let nextClink = 4, nextSteam = 14, nextCar = 3, nextChirp = 6, nextMeow = 12;
+  volEl.value = store.get('kk-amb-vol') ?? 60;
+  const level = () => (on && !held ? (+volEl.value / 100) * 1.1 : 0);
+  const paint = () => { btn.classList.toggle('on', on); btn.setAttribute('aria-label', on ? 'Turn off the street and cat sounds' : 'Turn on the street and cat sounds'); };
+  paint();
+  const noiseBuffer = (sec = 4, brown = false) => {
+    const b = ctx.createBuffer(1, ctx.sampleRate * sec, ctx.sampleRate), d = b.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < d.length; i++) { const w = Math.random() * 2 - 1; d[i] = brown ? (last = (last + .02 * w) / 1.02) * 3.5 : w; }
+    return b;
+  };
+  const loopNoise = (type, freq, q, gain, brown = false) => {
+    const src = ctx.createBufferSource(); src.buffer = noiseBuffer(6, brown); src.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    const g = ctx.createGain(); g.gain.value = gain;
+    src.connect(f).connect(g).connect(master); src.start();
+    return g;
+  };
+  const env = (g, at, peak, dur, attack = .005) => { g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(peak, at + attack); g.gain.exponentialRampToValueAtTime(.0001, at + dur); };
+  const panner = p => { const n = ctx.createStereoPanner(); n.pan.value = p; n.connect(master); return n; };
+  function start() {
+    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    ctx = new AC();
+    master = ctx.createGain(); master.gain.value = level(); master.connect(ctx.destination);
+    loopNoise('lowpass', 380, .7, .07, true);                  // the street through the window: traffic rumble
+    loopNoise('lowpass', 420, .7, .035);                        // warm room tone
+    const murmur = loopNoise('bandpass', 650, .8, .02);         // customers chatting softly
+    const lfo = ctx.createOscillator(); lfo.frequency.value = .17;
+    const lg = ctx.createGain(); lg.gain.value = .012; lfo.connect(lg).connect(murmur.gain); lfo.start();
+    const ps = ctx.createBufferSource(); ps.buffer = noiseBuffer(); ps.loop = true;  // purr: a rumble pulsing ~24 times a second
+    const pf = ctx.createBiquadFilter(); pf.type = 'lowpass'; pf.frequency.value = 170;
+    const pam = ctx.createGain(); pam.gain.value = .5;
+    const po = ctx.createOscillator(); po.frequency.value = 24;
+    const pog = ctx.createGain(); pog.gain.value = .5; po.connect(pog).connect(pam.gain); po.start();
+    purrGain = ctx.createGain(); purrGain.gain.value = 0;
+    ps.connect(pf).connect(pam).connect(purrGain).connect(master); ps.start();
+  }
+  function car() { // a car passing on the street outside, muffled by the window
+    const at = ctx.currentTime, d = 3 + Math.random() * 1.5, src = ctx.createBufferSource(); src.buffer = noiseBuffer(5);
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = .7; f.frequency.setValueAtTime(260, at); f.frequency.linearRampToValueAtTime(520, at + d * .5); f.frequency.linearRampToValueAtTime(240, at + d);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(.05, at + d * .5); g.gain.linearRampToValueAtTime(0, at + d);
+    const p = ctx.createStereoPanner(); p.pan.setValueAtTime(-.8, at); p.pan.linearRampToValueAtTime(.8, at + d); p.connect(master);
+    src.connect(f).connect(g).connect(p); src.start(at); src.stop(at + d);
+  }
+  function chirp() { // a sparrow outside
+    const at = ctx.currentTime, out = panner(Math.random() * 1.2 - .9);
+    for (let k = 0; k < 2 + Math.floor(Math.random() * 3); k++) {
+      const o = ctx.createOscillator(), g = ctx.createGain(), t0 = at + k * .12, f0 = 2600 + Math.random() * 700;
+      o.frequency.setValueAtTime(f0, t0); o.frequency.linearRampToValueAtTime(f0 * 1.45, t0 + .07);
+      env(g, t0, .012, .08, .01); o.connect(g).connect(out); o.start(t0); o.stop(t0 + .1);
+    }
+  }
+  function clink(vol) {
+    const at = ctx.currentTime, out = panner(Math.random() * 1.6 - .8);
+    [[2950, 1, .5], [4420, .6, .35], [6230, .35, .22]].forEach(([f, a, d]) => {
+      const o = ctx.createOscillator(); o.frequency.value = f * (.97 + Math.random() * .06);
+      const g = ctx.createGain(); env(g, at, vol * a, d); o.connect(g).connect(out); o.start(at); o.stop(at + d + .05);
+    });
+  }
+  function steam() { // the espresso machine hissing
+    const at = ctx.currentTime, src = ctx.createBufferSource(); src.buffer = noiseBuffer(3);
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = .6; f.frequency.setValueAtTime(5500, at); f.frequency.linearRampToValueAtTime(3500, at + 2.6);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(.025, at + .25); g.gain.setValueAtTime(.025, at + 2.2); g.gain.linearRampToValueAtTime(0, at + 2.8);
+    src.connect(f).connect(g).connect(panner(.5)); src.start(at);
+  }
+  function meow(sleepy = false, vol = .2) {
+    if (!ctx || !on) return;
+    const at = ctx.currentTime, d = sleepy ? .3 : .55 + Math.random() * .2, base = sleepy ? 640 : 520 + Math.random() * 140;
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(base * .85, at); o.frequency.linearRampToValueAtTime(base * 1.45, at + d * .35); o.frequency.linearRampToValueAtTime(base * .9, at + d);
+    const vib = ctx.createOscillator(); vib.frequency.value = 6;
+    const vg = ctx.createGain(); vg.gain.value = 12; vib.connect(vg).connect(o.frequency);
+    const f1 = ctx.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 6;
+    f1.frequency.setValueAtTime(900, at); f1.frequency.linearRampToValueAtTime(1500, at + d * .35); f1.frequency.linearRampToValueAtTime(700, at + d);
+    const f2 = ctx.createBiquadFilter(); f2.type = 'bandpass'; f2.Q.value = 8;
+    f2.frequency.setValueAtTime(2400, at); f2.frequency.linearRampToValueAtTime(2900, at + d * .4); f2.frequency.linearRampToValueAtTime(2000, at + d);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(vol, at + .05); g.gain.setValueAtTime(vol, at + d * .6); g.gain.exponentialRampToValueAtTime(.0001, at + d);
+    const out = panner(Math.random() * 1.2 - .6);
+    o.connect(f1).connect(g); o.connect(f2).connect(g); g.connect(out);
+    o.start(at); vib.start(at); o.stop(at + d + .05); vib.stop(at + d + .05);
+  }
+  function chime() { // the café door bell
+    if (!ctx || !on) return;
+    const at = ctx.currentTime;
+    [[1318.5, 0], [987.8, .16], [1318.5, .32]].forEach(([f, dt]) => [1, 2.76, 5.4].forEach((m, k) => {
+      const o = ctx.createOscillator(); o.frequency.value = f * m;
+      const g = ctx.createGain(); env(g, at + dt, .05 / (k + 1), 1.4 - k * .3);
+      o.connect(g).connect(master); o.start(at + dt); o.stop(at + dt + 1.6);
+    }));
+  }
+  const apply = () => { if (master) master.gain.setTargetAtTime(level(), ctx.currentTime, .15); };
+  btn.addEventListener('click', () => { on = !on; paint(); store.set('kk-amb', on ? 'on' : 'off'); start(); apply(); });
+  volEl.addEventListener('input', () => { store.set('kk-amb-vol', volEl.value); apply(); });
+  const tmp = new THREE.Vector3();
+  function update(dt) {
+    if (!ctx || !on || held) return;
+    t += dt;
+    if (t > nextCar) { car(); nextCar = t + 5 + Math.random() * 9; }
+    if (t > nextChirp) { chirp(); nextChirp = t + 6 + Math.random() * 10; }
+    if (t > nextClink) { clink(.02 + Math.random() * .025); nextClink = t + 4 + Math.random() * 7; }
+    if (t > nextSteam) { steam(); nextSteam = t + 22 + Math.random() * 20; }
+    if (t > nextMeow) { meow(false, .06 + Math.random() * .05); nextMeow = t + 14 + Math.random() * 18; }
+    let near = 0; // the purr grows as you get close to a sleeping cat
+    for (const c of cats) {
+      if (c.pose !== 'sleep') continue;
+      c.root.getWorldPosition(tmp);
+      near = Math.max(near, clamp(1 - (tmp.distanceTo(camera.position) - 1) / 5, 0, 1));
+    }
+    purrGain.gain.setTargetAtTime(.16 * near * near, ctx.currentTime, .3);
+  }
+  return { start, meow, chime, update, hold(v) { held = v; apply(); } };
+})();
+
+/* ================= Gate ================= */
+const enterBtn = $('.enter');
+let loadingDone = false;
+function finishLoading() {
+  if (loadingDone) return; loadingDone = true;
+  const id = setInterval(() => {
+    setProgress(Math.min(progress + 6, 100));
+    if (progress >= 100) { clearInterval(id); setTimeout(() => { $('.loader').hidden = true; enterBtn.hidden = false; enterBtn.focus(); }, 250); }
+  }, 30);
+}
+enterBtn.addEventListener('click', () => { entered = true; document.body.classList.add('entered'); teaserVid.play().catch(() => {}); Sound.start(); Sound.chime(); Radio.autoplay(); });
+teaserVid.play().catch(() => {}); // muted autoplay usually works right away
+
+/* ================= Loop ================= */
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+if ('ResizeObserver' in window) new ResizeObserver(resize).observe(canvas);
+
+const clock = new THREE.Clock();
+function tick() {
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
+  if (!focused) {
+    if (entered) { Object.assign(target, { yaw: userYaw, pitch: userPitch, fov: userFov }); target.pos.copy(HOME.pos); }
+    else { target.yaw = .2 + Math.sin(t * .25) * .35; target.pitch = -.08; }
+  }
+  const k = 1 - Math.exp(-dt * (focused ? 3 : entered ? 4.5 : 2));
+  state.yaw += (target.yaw - state.yaw) * k;
+  state.pitch += (target.pitch - state.pitch) * k;
+  state.fov += (target.fov - state.fov) * k;
+  state.pos.lerp(target.pos, k * .8);
+  camera.position.copy(state.pos);
+  camera.rotation.set(state.pitch, state.yaw, 0);
+  if (Math.abs(camera.fov - state.fov) > .01) { camera.fov = state.fov; camera.updateProjectionMatrix(); }
+
+  swing.rotation.x = Math.sin(t * 1.3) * .13;
+  neon.material.opacity = .92 + Math.sin(t * 9) * .03 + (Math.random() < .008 ? -.35 : 0);
+  animateCats(t, dt);
+  animateChars(t);
+  updateBubbles(t);
+  updateHotspots();
+  Sound.update(dt);
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+tick();
+manager.onLoad = finishLoading;
+manager.onError = url => console.warn('Could not load', url);
+setTimeout(finishLoading, 6000); // never leave the gate stuck if an image fails
+</script>
+</body>
+</html>
